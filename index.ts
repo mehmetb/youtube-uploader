@@ -48,7 +48,7 @@ async function launchBrowser(): Promise<void> {
 
 async function login() {
   await page.goto(UPLOAD_URL);
-  await askQuestion(('Please login and press enter to contine...'));
+  await askQuestion(('Please login and press enter to continue...'));
 }
 
 async function upload(videos?: video[]): Promise<string[]> {
