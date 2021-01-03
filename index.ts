@@ -1,6 +1,7 @@
 import readline from 'readline';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { EventEmitter } from 'events';
 import { Browser, Page } from 'puppeteer';
 import { video } from './interfaces';
 
@@ -16,10 +17,10 @@ const WIDTH = 1920;
 
 const UPLOAD_URL = 'https://www.youtube.com/upload';
 
+const eventEmitter = new EventEmitter();
+
 let browser: Browser; 
 let page: Page;
-
-let isLoggedIn = false;
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => {
@@ -33,7 +34,7 @@ function askQuestion(question: string): Promise<string> {
     rl.question(question, (answer) => {
       resolve(answer);
       rl.close();
-    })
+    });
   });
 }
 
@@ -45,29 +46,30 @@ async function launchBrowser(): Promise<void> {
   await page.setViewport({ width: WIDTH, height: HEIGHT });
 }
 
-async function login(localPage) {
-  await localPage.goto(UPLOAD_URL);
+async function login() {
+  await page.goto(UPLOAD_URL);
   await askQuestion(('Please login and press enter to contine...'));
-  isLoggedIn = true;
 }
 
 async function upload(videos?: video[]): Promise<string[]> {
-  await launchBrowser();
+  try {
+    await launchBrowser();
+    await login();
 
-  const youtubeLinks = [];
+    const youtubeLinks = [];
 
-  if (!isLoggedIn) {
-    await login(page);
+    for (const video of videos) {
+      eventEmitter.emit('beforeupload', { video });
+      const link = await uploadVideo(video);
+      eventEmitter.emit('afterupload', { video });
+      youtubeLinks.push(link);
+    }
+
+    return youtubeLinks;
+  } finally {
+    await browser.close();
+    eventEmitter.removeAllListeners();
   }
-
-  for (const video of videos) {
-    const link = await uploadVideo(video);
-    youtubeLinks.push(link);
-  }
-
-  await browser.close();
-
-  return youtubeLinks;
 }
 
 async function uploadVideo(video: video) {
@@ -76,7 +78,6 @@ async function uploadVideo(video: video) {
   const { title } = video;
   const { description } = video;
   const { tags } = video;
-  const videoLang = video.language;
 
   await page.evaluate(() => { window.onbeforeunload = null; });
   await page.goto(UPLOAD_URL);
@@ -111,9 +112,34 @@ async function uploadVideo(video: video) {
   await fileChooser.accept([pathToFile]);
   console.log('Started uploading', video.title);
 
-  // Wait for upload to complete
-  await page.waitForXPath('//*[contains(text(),"Upload complete")]', { timeout: 0 });
-  console.log('Uplaod complete, waiting for processing to start');
+  await page.waitForSelector('.progress-label');
+
+  let loop = true;
+  while (loop) {
+    try {
+      const progress = await page.$eval('.progress-label', (element) => {
+        const text = element.innerHTML;
+        const matches = text.match(/Uploading (\d+)%/);
+        
+        if (matches.length > 1) return matches[1];
+        return null;
+      });
+
+      eventEmitter.emit('uploadprogress', { video, progress });
+    } catch (ex) {
+      // do nothing, let 'finally' block to handle things
+    } finally {
+      try {
+        // Wait for upload to complete (for 500ms)
+        await page.waitForXPath('//*[contains(text(),"Upload complete")]', { timeout: 500 });
+        eventEmitter.emit('uploadprogress', { video, progress: 100 });
+        console.log('Uplaod complete, waiting for processing to start');
+        loop = false;
+      } catch (ex) {
+        // upload is not complete, do nothing (let the while loop run)
+      }
+    }
+  }
 
   // Wait for upload to go away and processing to start
   await page.waitForXPath('//*[contains(text(),"Upload complete")]', { hidden: true, timeout: 0 });
@@ -147,19 +173,19 @@ async function uploadVideo(video: video) {
       await page.evaluate((el) => el.click(), playlistNameSelector);
     } catch (ex) {
       // Failed to select an existing playlist, let's create a new one!
-    const newPlaylistXPath = '//*[normalize-space(text())=\'New playlist\']';
-    await page.waitForXPath(newPlaylistXPath);
+      const newPlaylistXPath = '//*[normalize-space(text())=\'New playlist\']';
+      await page.waitForXPath(newPlaylistXPath);
       const newPlaylistButton = (await page.$x(newPlaylistXPath))[0];
       await page.evaluate((el) => el.click(), newPlaylistButton);
-    await sleep(2000);
+      await sleep(2000);
 
-    // Enter new playlist name
+      // Enter new playlist name
       await page.keyboard.type(video.playlist.substring(0, 148));
 
-    // click create & then done button
+      // click create & then done button
       const createPlaylistButton = (await page.$x('//*[normalize-space(text())=\'Create\']'))[1];
       await page.evaluate((el) => el.click(), createPlaylistButton);
-    await sleep(3000);
+      await sleep(3000);
     }
 
     const createPlaylistDoneButton = (await page.$x('//*[normalize-space(text())=\'Done\']'))[0];
@@ -175,36 +201,28 @@ async function uploadVideo(video: video) {
     await page.type('[placeholder="Add tag"]', `${tags.join(', ').substring(0, 495)}, `);
   }
 
-  // Selecting video language
-  if (videoLang) {
-    const langHandler = await page.$x('//*[normalize-space(text())=\'Video language\']');
-    await page.evaluate((el) => el.click(), langHandler[0]);
-    // translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')
-    const langName = await page.$x(`//*[normalize-space(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"))='${videoLang.toLowerCase()}']`);
-    await page.evaluate((el) => el.click(), langName[langName.length - 1]);
-  }
   // click next button
   const nextBtnXPath = '//*[normalize-space(text())=\'Next\']/parent::*[not(@disabled)]';
   await page.waitForXPath(nextBtnXPath);
-  let next = await page.$x(nextBtnXPath);
-  await next[0].click();
-  await page.waitForXPath(nextBtnXPath);
+  let nextButton = (await page.$x(nextBtnXPath))[0];
+  await nextButton.click();
 
   // click next button
-  next = await page.$x(nextBtnXPath);
-  await next[0].click();
+  await page.waitForXPath(nextBtnXPath);
+  nextButton = (await page.$x(nextBtnXPath))[0];
+  await nextButton.click();
 
-  // Get publish button
+  // Get Save button
   const publishXPath = '//*[normalize-space(text())=\'Save\']/parent::*[not(@disabled)]';
   await page.waitForXPath(publishXPath);
-  const publish = await page.$x(publishXPath);
+  const publish = (await page.$x(publishXPath))[0];
 
   // save youtube upload link
   await page.waitForSelector('[href^="https://youtu.be"]');
   const uploadedLinkHandle = await page.$('[href^="https://youtu.be"]');
   const uploadedLink = await page.evaluate((e) => e.getAttribute('href'), uploadedLinkHandle);
 
-  await publish[0].click();
+  await publish.click();
 
   try {
     // Wait for closebtn to show up
@@ -216,4 +234,4 @@ async function uploadVideo(video: video) {
   return uploadedLink;
 }
 
-export { upload };
+export { upload, eventEmitter };

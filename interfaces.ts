@@ -3,7 +3,6 @@ interface video {
   title: string,
   description: string,
   tags?: string[],
-  language?: string,
   playlist?: string,
 }
 
