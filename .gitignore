@@ -104,3 +104,6 @@ dist
 .tern-port
 .dccache
 *.mp4
+
+*.js
+!.eslintrc.js

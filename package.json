@@ -1,16 +1,23 @@
 {
-  "name": "youtube-videos-uploader",
-  "version": "1.0.9",
+  "name": "@mehmetb/youtube-uploader",
+  "version": "1.0.0",
   "description": "Uploads videos to youtube without any limits",
-  "main": "upload.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "lint": "eslint *.ts --fix",
+    "start": "tsc && node dist/index.js",
+    "build": "tsc"
+  },
   "dependencies": {
     "puppeteer": "latest",
     "puppeteer-extra": "latest",
-    "puppeteer-extra-plugin-stealth": "latest"
+    "puppeteer-extra-plugin-stealth": "latest",
+    "uuid": "^8.3.2"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fawazahmed0/youtube-uploader.git"
+    "url": "git+https://github.com/mehmetb/youtube-uploader.git"
   },
   "keywords": [
     "youtube uploader",
@@ -19,9 +26,19 @@
     "videos"
   ],
   "author": "Fawaz Ahmed",
+  "contributors": [
+    "Mehmet Baker <mehmet@mehmetbaker.dev>"
+  ],
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/fawazahmed0/youtube-uploader/issues"
+    "url": "https://github.com/mehmetb/youtube-uploader/issues"
   },
-  "homepage": "https://github.com/fawazahmed0/youtube-uploader#readme"
+  "homepage": "https://github.com/mehmetb/youtube-uploader#readme",
+  "devDependencies": {
+    "@types/puppeteer": "^5.4.2",
+    "@typescript-eslint/eslint-plugin": "^4.11.1",
+    "@typescript-eslint/parser": "^4.11.1",
+    "eslint": "^7.17.0",
+    "typescript": "^4.1.3"
+  }
 }
