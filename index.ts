@@ -3,7 +3,6 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { Browser, Page } from 'puppeteer';
 import { video } from './interfaces';
-import { v4 as uuid } from 'uuid';
 
 // Add stealth plugin and use defaults (all tricks to hide puppeteer usage)
 puppeteer.use(StealthPlugin());
@@ -77,7 +76,6 @@ async function uploadVideo(video: video) {
   const { title } = video;
   const { description } = video;
   const { tags } = video;
-  const playlistName = video.playlist?.name || `New Playlist ${uuid()}`;
   const videoLang = video.language;
 
   await page.evaluate(() => { window.onbeforeunload = null; });
@@ -135,40 +133,37 @@ async function uploadVideo(video: video) {
   const childOption = await page.$x('//*[contains(text(),"No, it\'s")]');
   await childOption[0].click();
 
-  const playlist = await page.$x('//*[normalize-space(text())=\'Select\']');
-  let createplaylistdone;
-  if (video.playlist?.create) {
-    // Creating new playlist
+  if (video.playlist) {
     // click on playlist dropdown
-    await page.evaluate((el) => el.click(), playlist[0]);
+    const playlistDropdown = (await page.$x('//*[normalize-space(text())=\'Select\']'))[0];
+    await page.evaluate((el) => el.click(), playlistDropdown);
     await sleep(2000);
 
-    // click New playlist button
+    // First, try to select the playlist
+    try {
+      const playlistToSelectXPath = `//*[normalize-space(text())='${video.playlist}']`;
+      await page.waitForXPath(playlistToSelectXPath, { timeout: 5000 });
+      const playlistNameSelector = (await page.$x(playlistToSelectXPath))[0];
+      await page.evaluate((el) => el.click(), playlistNameSelector);
+    } catch (ex) {
+      // Failed to select an existing playlist, let's create a new one!
     const newPlaylistXPath = '//*[normalize-space(text())=\'New playlist\']';
     await page.waitForXPath(newPlaylistXPath);
-    const createplaylist = await page.$x(newPlaylistXPath);
-    await page.evaluate((el) => el.click(), createplaylist[0]);
+      const newPlaylistButton = (await page.$x(newPlaylistXPath))[0];
+      await page.evaluate((el) => el.click(), newPlaylistButton);
     await sleep(2000);
 
     // Enter new playlist name
-    await page.keyboard.type(playlistName.substring(0, 148));
+      await page.keyboard.type(video.playlist.substring(0, 148));
 
     // click create & then done button
-    const createplaylistbtn = await page.$x('//*[normalize-space(text())=\'Create\']');
-    await page.evaluate((el) => el.click(), createplaylistbtn[1]);
+      const createPlaylistButton = (await page.$x('//*[normalize-space(text())=\'Create\']'))[1];
+      await page.evaluate((el) => el.click(), createPlaylistButton);
     await sleep(3000);
+    }
 
-    createplaylistdone = await page.$x('//*[normalize-space(text())=\'Done\']');
-    await page.evaluate((el) => el.click(), createplaylistdone[0]);
-  } else if (playlistName) {
-    // Selecting playlist
-    await page.evaluate((el) => el.click(), playlist[0]);
-    const playlistToSelectXPath = `//*[normalize-space(text())='${playlistName}']`;
-    await page.waitForXPath(playlistToSelectXPath);
-    const playlistNameSelector = await page.$x(playlistToSelectXPath);
-    await page.evaluate((el) => el.click(), playlistNameSelector[0]);
-    createplaylistdone = await page.$x('//*[normalize-space(text())=\'Done\']');
-    await page.evaluate((el) => el.click(), createplaylistdone[0]);
+    const createPlaylistDoneButton = (await page.$x('//*[normalize-space(text())=\'Done\']'))[0];
+    await page.evaluate((el) => el.click(), createPlaylistDoneButton);
   }
 
   const moreOption = await page.$x('//*[normalize-space(text())=\'More options\']');
