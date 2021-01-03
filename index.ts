@@ -173,7 +173,7 @@ async function uploadVideo(video: video) {
       await page.evaluate((el) => el.click(), playlistNameSelector);
     } catch (ex) {
       // Failed to select an existing playlist, let's create a new one!
-      const newPlaylistXPath = '//*[normalize-space(text())=\'New playlist\']';
+      const newPlaylistXPath = '//*[normalize-space(text())=\'New playlist\' or normalize-space(text())=\'Create playlist\']';
       await page.waitForXPath(newPlaylistXPath);
       const newPlaylistButton = (await page.$x(newPlaylistXPath))[0];
       await page.evaluate((el) => el.click(), newPlaylistButton);
