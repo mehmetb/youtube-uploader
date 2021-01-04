@@ -73,11 +73,7 @@ async function upload(videos?: video[]): Promise<string[]> {
 }
 
 async function uploadVideo(video: video) {
-  const pathToFile = video.path;
-
-  const { title } = video;
-  const { description } = video;
-  const { tags } = video;
+  const { title, description, tags } = video;
 
   await page.evaluate(() => { window.onbeforeunload = null; });
   await page.goto(UPLOAD_URL);
@@ -109,8 +105,8 @@ async function uploadVideo(video: video) {
     selectBtn[0].click(), // button that triggers file selection
   ]);
 
-  await fileChooser.accept([pathToFile]);
-  console.log('Started uploading', video.title);
+  await fileChooser.accept([video.path]);
+  console.log('Started uploading', title);
 
   await page.waitForSelector('.progress-label');
 
@@ -146,7 +142,7 @@ async function uploadVideo(video: video) {
   console.log('Processing started');
 
   // Wait until title & description box pops up
-  await page.waitForFunction('document.querySelectorAll(\'[id="textbox"]\').length > 1');
+  await page.waitForFunction('document.querySelectorAll(\'#textbox\').length > 1');
   const textBoxes = await page.$x('//*[@id="textbox"]');
 
   // Add the title value
@@ -163,12 +159,11 @@ async function uploadVideo(video: video) {
     // click on playlist dropdown
     const playlistDropdown = (await page.$x('//*[normalize-space(text())=\'Select\']'))[0];
     await page.evaluate((el) => el.click(), playlistDropdown);
-    await sleep(2000);
 
     // First, try to select the playlist
     try {
       const playlistToSelectXPath = `//*[normalize-space(text())='${video.playlist}']`;
-      await page.waitForXPath(playlistToSelectXPath, { timeout: 5000 });
+      await page.waitForXPath(playlistToSelectXPath, { timeout: 2000 });
       const playlistNameSelector = (await page.$x(playlistToSelectXPath))[0];
       await page.evaluate((el) => el.click(), playlistNameSelector);
     } catch (ex) {
@@ -177,18 +172,21 @@ async function uploadVideo(video: video) {
       await page.waitForXPath(newPlaylistXPath);
       const newPlaylistButton = (await page.$x(newPlaylistXPath))[0];
       await page.evaluate((el) => el.click(), newPlaylistButton);
-      await sleep(2000);
+      await page.waitForSelector('textarea[placeholder="Add title"]');
 
       // Enter new playlist name
       await page.keyboard.type(video.playlist.substring(0, 148));
 
       // click create & then done button
-      const createPlaylistButton = (await page.$x('//*[normalize-space(text())=\'Create\']'))[1];
+      const createPlaylistXPath = '(//*[normalize-space(text())=\'Create\'])[2]';
+      await page.waitForXPath(createPlaylistXPath);
+      const createPlaylistButton = (await page.$x(createPlaylistXPath))[0];
       await page.evaluate((el) => el.click(), createPlaylistButton);
-      await sleep(3000);
     }
 
-    const createPlaylistDoneButton = (await page.$x('//*[normalize-space(text())=\'Done\']'))[0];
+    const createPlaylistDoneXPath = '//*[normalize-space(text())=\'Done\']';
+    await page.waitForXPath(createPlaylistDoneXPath);
+    const createPlaylistDoneButton = (await page.$x(createPlaylistDoneXPath))[0];
     await page.evaluate((el) => el.click(), createPlaylistDoneButton);
   }
 
